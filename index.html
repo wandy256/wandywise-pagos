@@ -43,7 +43,9 @@ label.lbl{display:block;font-size:12.5px;font-weight:600;margin:0 0 6px}
 .field{width:100%;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px;outline:none}
 .field:focus{border-color:var(--mint)}
 .mono{font-family:"Geist Mono",ui-monospace,Consolas,monospace;text-transform:uppercase;letter-spacing:.04em}
-.idgrid{display:grid;grid-template-columns:1.6fr 1fr auto;gap:12px;align-items:end}
+.idgrid{display:grid;grid-template-columns:1.6fr auto;gap:12px;align-items:end}
+.idgrid.otp{grid-template-columns:1.6fr 1fr auto}
+.linkbtn{background:none;border:0;padding:0;color:var(--mint-dark);font:inherit;text-decoration:underline;cursor:pointer}
 @media (max-width:640px){.idgrid{grid-template-columns:1fr}}
 .btn{border:0;border-radius:12px;padding:12px 18px;background:var(--navy);color:#fff;font-weight:700;cursor:pointer;white-space:nowrap}
 .btn[disabled]{opacity:.5;cursor:wait}
@@ -110,14 +112,15 @@ footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display
     <div class="intro">
       <p class="eyebrow">Pagos de servicios</p>
       <h1>Tus servicios y pagos <em>en un minuto.</em></h1>
-      <p class="lede">Escribe tu código profesional y te mostramos tus servicios contratados, lo que tienes pendiente, con los descuentos por pagar varios meses. Al pagar, tu recibo y tu renovación se generan solos.</p>
+      <p class="lede">Escribe tu código profesional, confirma con el código que te enviamos por SMS y te mostramos tus servicios contratados, lo que tienes pendiente, con los descuentos por pagar varios meses. Al pagar, tu recibo y tu renovación se generan solos.</p>
     </div>
     <form class="panel" id="f-id" novalidate>
       <div class="idgrid">
         <div><label class="lbl" for="codigo">Código profesional</label><input class="field mono" id="codigo" placeholder="WMK-ABC1234" autocomplete="off" spellcheck="false" required></div>
-        <div><label class="lbl" for="tel4">Últimos 4 dígitos de tu WhatsApp</label><input class="field num" id="tel4" inputmode="numeric" maxlength="4" placeholder="0000" required></div>
-        <button class="btn" id="b-consultar" type="submit">Ver mis pagos</button>
+        <div id="otp-box" hidden><label class="lbl" for="otp">Código que te llegó por SMS</label><input class="field num" id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div>
+        <button class="btn" id="b-consultar" type="submit">Enviarme el código</button>
       </div>
+      <p class="help" id="otp-help" hidden></p>
       <p class="help">Tu código profesional te lo enviamos por WhatsApp (ej.: <b>WMK-…</b>, <b>WMG-…</b> o <b>WWS-…</b>). También puedes usar el ID de licencia que aparece en tu sistema. Si no lo tienes, escríbenos por WhatsApp al <span style="user-select:all">+1 (828) 378-6106</span>.</p>
       <div id="m1" class="msg err" hidden></div>
     </form>
@@ -184,20 +187,45 @@ function addMonths(d, m){ // misma regla que el servidor: desde + m meses − 1 
 function pct(s,m){ return m>=12 ? +s.pct12 : m>=6 ? +s.pct6 : 0; }
 function linea(s,m){ const sub = +s.tarifa*m, d = Math.round(sub*pct(s,m))/100; return {sub, d, tot: sub-d}; }
 
-// ── Paso 1
+// ── Paso 1: código profesional → SMS → cuenta
+let enviadoPara = "";
+function modoOtp(on, destino){
+  $("#otp-box").hidden = !on; $(".idgrid").classList.toggle("otp", on);
+  $("#b-consultar").textContent = on ? "Ver mis pagos" : "Enviarme el código";
+  const h = $("#otp-help");
+  if(on){ h.innerHTML = `Te enviamos un código por SMS al <b>${destino}</b>. <button type="button" class="linkbtn" id="b-reenviar">Reenviar</button>`; h.hidden = false;
+          $("#b-reenviar").onclick = ()=>enviar(true); setTimeout(()=>$("#otp").focus(), 50); }
+  else { h.hidden = true; $("#otp").value = ""; enviadoPara = ""; }
+}
+async function enviar(reenvio){
+  const codigo = $("#codigo").value.trim().toUpperCase();
+  if(!codigo){ show($("#m1"),"Escribe tu código profesional."); return; }
+  const b = $("#b-consultar"); b.disabled = true; b.textContent = reenvio ? "Reenviando…" : "Enviando…"; show($("#m1"),"");
+  try{
+    const j = await api({accion:"enviar_codigo", codigo});
+    enviadoPara = codigo; modoOtp(true, j.destino);
+  }catch(err){ show($("#m1"), err.message); if(!enviadoPara) modoOtp(false); }
+  finally{ b.disabled = false; b.textContent = enviadoPara ? "Ver mis pagos" : "Enviarme el código"; }
+}
+$("#codigo").addEventListener("input", ()=>{ if(enviadoPara && $("#codigo").value.trim().toUpperCase() !== enviadoPara) modoOtp(false); });
 $("#f-id").addEventListener("submit", async e=>{
   e.preventDefault();
-  const codigo = $("#codigo").value.trim().toUpperCase(), tel4 = $("#tel4").value.replace(/\D/g,"");
-  if(!codigo || tel4.length!==4){ show($("#m1"),"Escribe tu código profesional y los 4 últimos dígitos de tu WhatsApp."); return; }
-  const b = $("#b-consultar"); b.disabled = true; b.textContent = "Buscando…"; show($("#m1"),"");
+  const codigo = $("#codigo").value.trim().toUpperCase();
+  if(!enviadoPara || enviadoPara !== codigo){ await enviar(false); return; }
+  const otp = $("#otp").value.replace(/\D/g,"");
+  if(otp.length < 4){ show($("#m1"),"Escribe el código de 6 dígitos que te llegó por SMS."); return; }
+  const b = $("#b-consultar"); b.disabled = true; b.textContent = "Verificando…"; show($("#m1"),"");
   try{
-    const j = await api({accion:"consultar", codigo, tel4});
-    cuenta = j.cuenta; cred = {codigo, tel4}; sel = {};
+    const j = await api({accion:"consultar", codigo, otp});
+    cuenta = j.cuenta; cred = {codigo, sesion: j.sesion}; sel = {};
     cuenta.servicios.forEach(s=>{ sel[s.id] = {on: !!s.sugerido, m: s.unico?1: (s.clave==="membresia_sistema"?12:1)}; });
     pintar(); $("#paso1").hidden = true; $("#paso2").hidden = false; window.scrollTo(0,0);
-  }catch(err){ show($("#m1"), String(err.message).replace("un sistema con ese ID","una cuenta con ese código")); }
+  }catch(err){ show($("#m1"), err.message); }
   finally{ b.disabled = false; b.textContent = "Ver mis pagos"; }
 });
+// Enlace directo desde el sistema: ?codigo=WMK-XXX0000
+(()=>{ const c = new URLSearchParams(location.search).get("codigo");
+  if(c && /^[A-Za-z0-9-]{4,40}$/.test(c)){ $("#codigo").value = c.toUpperCase(); } })();
 
 // ── Paso 2
 function pintar(){
@@ -243,7 +271,11 @@ $("#b-pagar").addEventListener("click", async ()=>{
     const seleccion = Object.entries(sel).filter(([,v])=>v.on).map(([id,v])=>({id, meses:v.m}));
     const j = await api({accion:"checkout", ...cred, seleccion, email: $("#email").value.trim(), return_url: location.origin + location.pathname});
     window.top.location.href = j.url;
-  }catch(err){ show($("#m2"), err.message); b.disabled = false; b.textContent = "Pagar con tarjeta"; }
+  }catch(err){
+    b.disabled = false; b.textContent = "Pagar con tarjeta";
+    if(/sesión venció/i.test(err.message)){ $("#paso2").hidden = true; $("#paso1").hidden = false; modoOtp(false); show($("#m1"), err.message); window.scrollTo(0,0); return; }
+    show($("#m2"), err.message);
+  }
 });
 
 // ── Paso 3: regreso desde Stripe
