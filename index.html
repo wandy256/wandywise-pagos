@@ -109,16 +109,16 @@ footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display
   <section id="paso1">
     <div class="intro">
       <p class="eyebrow">Pagos de servicios</p>
-      <h1>Renueva tu sistema <em>en un minuto.</em></h1>
-      <p class="lede">Escribe tu ID de sistema y te mostramos lo que tienes pendiente, con los descuentos por pagar varios meses. Al pagar, tu recibo y tu renovación se generan solos.</p>
+      <h1>Tus servicios y pagos <em>en un minuto.</em></h1>
+      <p class="lede">Escribe tu código profesional y te mostramos tus servicios contratados, lo que tienes pendiente, con los descuentos por pagar varios meses. Al pagar, tu recibo y tu renovación se generan solos.</p>
     </div>
     <form class="panel" id="f-id" novalidate>
       <div class="idgrid">
-        <div><label class="lbl" for="codigo">ID de sistema</label><input class="field mono" id="codigo" placeholder="WWHS-KID-0A7534" autocomplete="off" spellcheck="false" required></div>
+        <div><label class="lbl" for="codigo">Código profesional</label><input class="field mono" id="codigo" placeholder="WMK-ABC1234" autocomplete="off" spellcheck="false" required></div>
         <div><label class="lbl" for="tel4">Últimos 4 dígitos de tu WhatsApp</label><input class="field num" id="tel4" inputmode="numeric" maxlength="4" placeholder="0000" required></div>
         <button class="btn" id="b-consultar" type="submit">Ver mis pagos</button>
       </div>
-      <p class="help">El ID aparece en tu sistema, en <b>Configuración → Información de licencia</b>. Si no lo encuentras, escríbenos por WhatsApp al <span style="user-select:all">+1 (828) 378-6106</span>.</p>
+      <p class="help">Tu código profesional te lo enviamos por WhatsApp (ej.: <b>WMK-…</b>, <b>WMG-…</b> o <b>WWS-…</b>). También puedes usar el ID de licencia que aparece en tu sistema. Si no lo tienes, escríbenos por WhatsApp al <span style="user-select:all">+1 (828) 378-6106</span>.</p>
       <div id="m1" class="msg err" hidden></div>
     </form>
   </section>
@@ -140,7 +140,7 @@ footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display
         <button class="pay" id="b-pagar" disabled>Pagar con tarjeta</button>
         <div id="m2" class="msg err" hidden></div>
         <p class="fine">Pago seguro con Stripe. El cargo se hace en pesos dominicanos (RD$); si tu tarjeta es de otra moneda, tu banco hace la conversión.</p>
-        <div class="alt">¿Prefieres transferencia o depósito? Escríbenos por WhatsApp al <span style="user-select:all">+1 (828) 378-6106</span> con tu ID y te enviamos los datos.</div>
+        <div class="alt">¿Prefieres transferencia o depósito? Escríbenos por WhatsApp al <span style="user-select:all">+1 (828) 378-6106</span> con tu código y te enviamos los datos.</div>
       </aside>
     </div>
   </section>
@@ -188,21 +188,21 @@ function linea(s,m){ const sub = +s.tarifa*m, d = Math.round(sub*pct(s,m))/100; 
 $("#f-id").addEventListener("submit", async e=>{
   e.preventDefault();
   const codigo = $("#codigo").value.trim().toUpperCase(), tel4 = $("#tel4").value.replace(/\D/g,"");
-  if(!codigo || tel4.length!==4){ show($("#m1"),"Escribe tu ID de sistema y los 4 últimos dígitos de tu WhatsApp."); return; }
+  if(!codigo || tel4.length!==4){ show($("#m1"),"Escribe tu código profesional y los 4 últimos dígitos de tu WhatsApp."); return; }
   const b = $("#b-consultar"); b.disabled = true; b.textContent = "Buscando…"; show($("#m1"),"");
   try{
     const j = await api({accion:"consultar", codigo, tel4});
     cuenta = j.cuenta; cred = {codigo, tel4}; sel = {};
     cuenta.servicios.forEach(s=>{ sel[s.id] = {on: !!s.sugerido, m: s.unico?1: (s.clave==="membresia_sistema"?12:1)}; });
     pintar(); $("#paso1").hidden = true; $("#paso2").hidden = false; window.scrollTo(0,0);
-  }catch(err){ show($("#m1"), err.message); }
+  }catch(err){ show($("#m1"), String(err.message).replace("un sistema con ese ID","una cuenta con ese código")); }
   finally{ b.disabled = false; b.textContent = "Ver mis pagos"; }
 });
 
 // ── Paso 2
 function pintar(){
   $("#saludo").textContent = `Hola, ${cuenta.tratamiento} ${cuenta.nombre}`;
-  $("#lic").textContent = cuenta.software ? `${cuenta.software}${cuenta.licencia_hasta && cuenta.licencia_hasta < "2099" ? " · licencia hasta " + F(cuenta.licencia_hasta) : ""}` : "";
+  $("#lic").textContent = [cuenta.codigo_profesional ? "Código " + cuenta.codigo_profesional : "", cuenta.software ? `${cuenta.software}${cuenta.licencia_hasta && cuenta.licencia_hasta < "2099" ? " · licencia hasta " + F(cuenta.licencia_hasta) : ""}` : ""].filter(Boolean).join(" · ");
   const saldo = +cuenta.saldo_pendiente_rd;
   show($("#saldo"), saldo>0 ? `Tienes un saldo pendiente de ${RD(saldo)} de un recibo anterior. Para saldarlo, escríbenos por WhatsApp.` : "");
   if(!cuenta.servicios.length){ $("#lista").innerHTML = `<p class="sub">No tienes servicios con cobro activo. Si crees que es un error, escríbenos.</p>`; }
